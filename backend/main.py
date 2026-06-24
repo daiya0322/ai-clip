@@ -49,13 +49,14 @@ def _get_cookies_file() -> Path | None:
     return _COOKIES_FILE
 
 def _yt_base_args() -> list[str]:
-    """yt-dlp共通引数: 複数クライアントでbot検出を回避"""
+    """yt-dlp共通引数: tvクライアント優先でbot検出を回避"""
     args = [
         YT_DLP,
-        "--extractor-args", "youtube:player_client=mweb,ios,tv_embedded,web",
+        "--extractor-args", "youtube:player_client=tv,mweb,ios,tv_embedded",
         "--no-warnings",
-        "--user-agent", "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+        "--user-agent", "Mozilla/5.0 (SMART-TV; Linux; Tizen 6.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/6.0 TV Safari/538.1",
         "--add-header", "Accept-Language:ja-JP,ja;q=0.9,en;q=0.8",
+        "--sleep-requests", "1",
     ]
     cf = _get_cookies_file()
     if cf:
@@ -268,7 +269,8 @@ async def create_clip(req: ClipRequest):
     output_path = TMP_DIR / f"clip_{job_id}.mp4"
 
     try:
-        dl = subprocess.run(
+        dl_args_list = [
+            # 第1試行: tvクライアント
             _yt_base_args() + [
                 "--ffmpeg-location", FFMPEG,
                 "-f", "bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/mp4/18/best[height<=480]",
@@ -276,10 +278,30 @@ async def create_clip(req: ClipRequest):
                 "-o", str(video_path),
                 "--no-playlist",
                 "--", req.video_id,
-            ], capture_output=True, text=True, timeout=300)
+            ],
+            # 第2試行: iosクライアント + 別フォーマット
+            [
+                YT_DLP,
+                "--extractor-args", "youtube:player_client=ios",
+                "--no-warnings",
+                "--ffmpeg-location", FFMPEG,
+                "-f", "best[height<=480]/worst",
+                "-o", str(video_path),
+                "--no-playlist",
+                "--", req.video_id,
+            ],
+        ]
+        dl = None
+        for args in dl_args_list:
+            dl = subprocess.run(args, capture_output=True, text=True, timeout=300)
+            if dl.returncode == 0:
+                break
 
-        if dl.returncode != 0:
-            raise HTTPException(500, f"動画のダウンロードに失敗しました: {dl.stderr[-300:]}")
+        if dl is None or dl.returncode != 0:
+            err = (dl.stderr if dl else "")[-400:]
+            if "page needs to be reloaded" in err or "Sign in" in err:
+                raise HTTPException(500, "YouTubeのbot検出によりダウンロードがブロックされました。Railway環境変数にYOUTUBE_COOKIES_B64を設定してください。")
+            raise HTTPException(500, f"動画のダウンロードに失敗しました: {err}")
 
         if not video_final.exists():
             # Try finding the file with different extension

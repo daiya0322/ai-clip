@@ -49,14 +49,11 @@ def _get_cookies_file() -> Path | None:
     return _COOKIES_FILE
 
 def _yt_base_args() -> list[str]:
-    """yt-dlp共通引数: tvクライアント優先でbot検出を回避"""
+    """yt-dlp共通引数: tv_simplyクライアントでbot検出を回避（クッキー不要）"""
     args = [
         YT_DLP,
-        "--extractor-args", "youtube:player_client=tv,mweb,ios,tv_embedded",
+        "--extractor-args", "youtube:player_client=tv_simply,mweb,tv,ios",
         "--no-warnings",
-        "--user-agent", "Mozilla/5.0 (SMART-TV; Linux; Tizen 6.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/6.0 TV Safari/538.1",
-        "--add-header", "Accept-Language:ja-JP,ja;q=0.9,en;q=0.8",
-        "--sleep-requests", "1",
     ]
     cf = _get_cookies_file()
     if cf:
@@ -279,10 +276,10 @@ async def create_clip(req: ClipRequest):
                 "--no-playlist",
                 "--", req.video_id,
             ],
-            # 第2試行: iosクライアント + 別フォーマット
+            # 第2試行: mwebクライアント + 低解像度フォーマット
             [
                 YT_DLP,
-                "--extractor-args", "youtube:player_client=ios",
+                "--extractor-args", "youtube:player_client=mweb,ios",
                 "--no-warnings",
                 "--ffmpeg-location", FFMPEG,
                 "-f", "best[height<=480]/worst",

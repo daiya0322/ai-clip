@@ -1,6 +1,6 @@
 fastapi==0.128.8
 uvicorn==0.39.0
-yt-dlp==2025.10.14
+yt-dlp==2026.6.9
 youtube-transcript-api==1.2.4
 anthropic==0.111.0
 python-multipart==0.0.20

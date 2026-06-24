@@ -34,6 +34,32 @@ FFMPEG    = imageio_ffmpeg.get_ffmpeg_exe()
 YT_DLP    = shutil.which("yt-dlp") or str(BASE_DIR / "venv" / "bin" / "yt-dlp")
 ANTHROPIC = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
 
+# YouTubeクッキーファイル (YOUTUBE_COOKIES_B64 環境変数からBase64デコードして使用)
+_COOKIES_FILE: Path | None = None
+def _get_cookies_file() -> Path | None:
+    global _COOKIES_FILE
+    if _COOKIES_FILE and _COOKIES_FILE.exists():
+        return _COOKIES_FILE
+    b64 = os.environ.get("YOUTUBE_COOKIES_B64", "")
+    if not b64:
+        return None
+    import base64
+    _COOKIES_FILE = TMP_DIR / "yt_cookies.txt"
+    _COOKIES_FILE.write_bytes(base64.b64decode(b64))
+    return _COOKIES_FILE
+
+def _yt_base_args() -> list[str]:
+    """yt-dlp共通引数: iosクライアント優先、クッキーがあれば使用"""
+    args = [
+        YT_DLP,
+        "--extractor-args", "youtube:player_client=ios,tv_embedded,web",
+        "--no-warnings",
+    ]
+    cf = _get_cookies_file()
+    if cf:
+        args += ["--cookies", str(cf)]
+    return args
+
 
 def extract_video_id(url: str) -> str | None:
     patterns = [
@@ -90,7 +116,7 @@ async def get_transcript(req: TranscriptRequest):
 
     # Get metadata (no download)
     meta = subprocess.run(
-        [YT_DLP, "--skip-download", "--print", "%(title)s|||%(duration)s|||%(uploader)s", "--", video_id],
+        _yt_base_args() + ["--skip-download", "--print", "%(title)s|||%(duration)s|||%(uploader)s", "--", video_id],
         capture_output=True, text=True, timeout=30
     )
     parts = meta.stdout.strip().split("|||")
@@ -215,18 +241,15 @@ async def create_clip(req: ClipRequest):
     output_path = TMP_DIR / f"clip_{job_id}.mp4"
 
     try:
-        # android_vr クライアントでSABR/PO Token問題を回避
-        # --ffmpeg-location でバンドルFFmpegを使いDASHマージを可能にする
-        dl = subprocess.run([
-            YT_DLP,
-            "--ffmpeg-location", FFMPEG,
-            "--extractor-args", "youtube:player_client=android_vr",
-            "-f", "bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/18/best[height<=480]",
-            "--merge-output-format", "mp4",
-            "-o", str(video_path),
-            "--no-playlist",
-            "--", req.video_id,
-        ], capture_output=True, text=True, timeout=300)
+        dl = subprocess.run(
+            _yt_base_args() + [
+                "--ffmpeg-location", FFMPEG,
+                "-f", "bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/mp4/18/best[height<=480]",
+                "--merge-output-format", "mp4",
+                "-o", str(video_path),
+                "--no-playlist",
+                "--", req.video_id,
+            ], capture_output=True, text=True, timeout=300)
 
         if dl.returncode != 0:
             raise HTTPException(500, f"動画のダウンロードに失敗しました: {dl.stderr[-300:]}")

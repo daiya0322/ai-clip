@@ -348,7 +348,7 @@ export default function Home() {
               <div style={{ flex:1, minWidth:0 }}>
                 <p style={{ fontSize:'14px', fontWeight:600, color:'var(--t1)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{meta.title}</p>
                 <p style={{ fontSize:'12px', color:'var(--t3)', marginTop:'2px' }}>
-                  {meta.uploader} · {fmtDuration(meta.duration)}
+                  {meta.uploader} · {meta.duration > 0 ? fmtDuration(meta.duration) : '時間不明'}
                   {meta.has_transcript ? ' · 字幕あり' : ' · 字幕なし'}
                 </p>
               </div>

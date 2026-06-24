@@ -49,16 +49,30 @@ def _get_cookies_file() -> Path | None:
     return _COOKIES_FILE
 
 def _yt_base_args() -> list[str]:
-    """yt-dlp共通引数: iosクライアント優先、クッキーがあれば使用"""
+    """yt-dlp共通引数: 複数クライアントでbot検出を回避"""
     args = [
         YT_DLP,
-        "--extractor-args", "youtube:player_client=ios,tv_embedded,web",
+        "--extractor-args", "youtube:player_client=mweb,ios,tv_embedded,web",
         "--no-warnings",
+        "--user-agent", "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+        "--add-header", "Accept-Language:ja-JP,ja;q=0.9,en;q=0.8",
     ]
     cf = _get_cookies_file()
     if cf:
         args += ["--cookies", str(cf)]
     return args
+
+
+def _oembed_meta(video_id: str) -> tuple[str, str]:
+    """YouTube oEmbedからタイトルとアップロード者を取得（bot検出なし）"""
+    import urllib.request
+    try:
+        url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            data = json.loads(resp.read())
+            return data.get("title", ""), data.get("author_name", "")
+    except Exception:
+        return "", ""
 
 
 def extract_video_id(url: str) -> str | None:
@@ -114,15 +128,28 @@ async def get_transcript(req: TranscriptRequest):
     if not video_id:
         raise HTTPException(400, "YouTube URLが正しくありません")
 
-    # Get metadata (no download)
+    # Get metadata via yt-dlp
     meta = subprocess.run(
-        _yt_base_args() + ["--skip-download", "--print", "%(title)s|||%(duration)s|||%(uploader)s", "--", video_id],
-        capture_output=True, text=True, timeout=30
+        _yt_base_args() + [
+            "--skip-download", "--print", "%(title)s|||%(duration)s|||%(uploader)s",
+            "--no-playlist", "--", video_id,
+        ],
+        capture_output=True, text=True, timeout=40
     )
-    parts = meta.stdout.strip().split("|||")
-    title    = parts[0] if len(parts) > 0 else "Unknown"
-    duration = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
-    uploader = parts[2] if len(parts) > 2 else ""
+    title, duration, uploader = "", 0, ""
+    if meta.returncode == 0 and "|||" in meta.stdout:
+        parts = meta.stdout.strip().split("|||")
+        title    = parts[0] if len(parts) > 0 else ""
+        duration = int(parts[1]) if len(parts) > 1 and parts[1].strip().isdigit() else 0
+        uploader = parts[2].strip() if len(parts) > 2 else ""
+
+    # oEmbedフォールバック: yt-dlpがbot検出でブロックされた場合でもタイトルを取得
+    if not title:
+        title, uploader_fb = _oembed_meta(video_id)
+        if not uploader:
+            uploader = uploader_fb
+    if not title:
+        title = f"YouTube動画 ({video_id})"
 
     # Get transcript
     try:

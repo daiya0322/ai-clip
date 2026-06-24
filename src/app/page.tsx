@@ -2,6 +2,8 @@
 import { useState } from 'react';
 
 const API = '';
+// clipはVercel経由だと10秒タイムアウトで失敗するためRailwayに直接送る
+const CLIP_API = process.env.NEXT_PUBLIC_BACKEND_URL ?? '';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -186,7 +188,7 @@ export default function Home() {
     setClipping(true);
     setClipUrl('');
     try {
-      const res = await fetch(`${API}/api/clip`, {
+      const res = await fetch(`${CLIP_API}/api/clip`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

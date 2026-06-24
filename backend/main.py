@@ -131,7 +131,7 @@ async def get_transcript(req: TranscriptRequest):
     # Get metadata via yt-dlp
     meta = subprocess.run(
         _yt_base_args() + [
-            "--skip-download", "--print", "%(title)s|||%(duration)s|||%(uploader)s",
+            "--skip-download", "--print", "%(title)s|||%(duration)s|||%(channel)s",
             "--no-playlist", "--", video_id,
         ],
         capture_output=True, text=True, timeout=40
@@ -143,13 +143,13 @@ async def get_transcript(req: TranscriptRequest):
         duration = int(parts[1]) if len(parts) > 1 and parts[1].strip().isdigit() else 0
         uploader = parts[2].strip() if len(parts) > 2 else ""
 
-    # oEmbedフォールバック: yt-dlpがbot検出でブロックされた場合でもタイトルを取得
-    if not title:
-        title, uploader_fb = _oembed_meta(video_id)
-        if not uploader:
+    # oEmbedフォールバック: yt-dlpが失敗またはNA返却の場合
+    if not title or uploader in ("NA", "N/A", ""):
+        title_fb, uploader_fb = _oembed_meta(video_id)
+        if not title:
+            title = title_fb or f"YouTube動画 ({video_id})"
+        if uploader in ("NA", "N/A", "") and uploader_fb:
             uploader = uploader_fb
-    if not title:
-        title = f"YouTube動画 ({video_id})"
 
     # Get transcript
     try:

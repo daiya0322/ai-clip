@@ -336,7 +336,7 @@ async def create_clip(req: ClipRequest):
             last_error = dl_result.stderr
 
         if dl_result is None or dl_result.returncode != 0:
-            raise HTTPException(500, _classify_ytdlp_error(last_error))
+            raise HTTPException(500, f"[DEBUG] {last_error[-600:]}")
 
         # ダウンロードされたファイルを探す
         if not video_final.exists():

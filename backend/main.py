@@ -301,27 +301,31 @@ async def create_clip(req: ClipRequest):
     try:
         # ── ダウンロード（複数クライアントでフォールバック）────────────────
         download_strategies = [
-            # 1. tv_simply: サーバーIP向けに最も安定
-            _yt_base_args("tv_simply") + [
+            # 1. androidクライアント: クッキーありで最も安定
+            _yt_base_args("android") + [
                 "--ffmpeg-location", FFMPEG,
-                "-f", "bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[height<=480]/best",
+                "-f", "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
                 "--merge-output-format", "mp4",
                 "-o", str(video_path),
                 "--no-playlist",
                 "--", req.video_id,
             ],
-            # 2. ios: iOSクライアント偽装
+            # 2. ios: フォールバック
             _yt_base_args("ios") + [
                 "--ffmpeg-location", FFMPEG,
                 "-f", "best[height<=480]/best",
+                "--merge-output-format", "mp4",
                 "-o", str(video_path),
                 "--no-playlist",
                 "--", req.video_id,
             ],
-            # 3. mweb: モバイルWebクライアント
-            _yt_base_args("mweb") + [
+            # 3. クライアント指定なし（デフォルトweb）
+            [
+                YT_DLP,
                 "--ffmpeg-location", FFMPEG,
-                "-f", "best[height<=360]/worst",
+                "--no-warnings",
+                "--no-check-certificates",
+                "-f", "best",
                 "-o", str(video_path),
                 "--no-playlist",
                 "--", req.video_id,

@@ -140,12 +140,15 @@ class ClipRequest(BaseModel):
 
 @app.get("/api/health")
 def health():
-    has_cookies = bool(os.environ.get("YOUTUBE_COOKIES_B64"))
+    cf = _get_cookies_file()
+    cookie_size = cf.stat().st_size if cf and cf.exists() else 0
     return {
         "status": "ok",
         "ffmpeg": FFMPEG,
         "yt_dlp": YT_DLP,
-        "has_youtube_cookies": has_cookies,
+        "has_youtube_cookies": bool(os.environ.get("YOUTUBE_COOKIES_B64")),
+        "cookies_file": str(cf) if cf else None,
+        "cookies_file_size": cookie_size,
     }
 
 
@@ -299,32 +302,30 @@ async def create_clip(req: ClipRequest):
 
     try:
         # ── ダウンロード（複数クライアントでフォールバック）────────────────
+        # クッキーファイルを取得
+        cf = _get_cookies_file()
+        cookie_args = ["--cookies", str(cf)] if cf else []
+
         download_strategies = [
-            # 1. webクライアント: ブラウザcookiesと一致するため最優先
-            _yt_base_args("web") + [
-                "--ffmpeg-location", FFMPEG,
+            # 1. クライアント指定なし＋cookies（最もブラウザに近い）
+            [YT_DLP, "--no-warnings", "--no-check-certificates",
+             "--ffmpeg-location", FFMPEG] + cookie_args + [
                 "-f", "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
                 "--merge-output-format", "mp4",
-                "-o", str(video_path),
-                "--no-playlist",
-                "--", req.video_id,
+                "-o", str(video_path), "--no-playlist", "--", req.video_id,
             ],
-            # 2. ios: フォールバック
+            # 2. ios＋cookies
             _yt_base_args("ios") + [
                 "--ffmpeg-location", FFMPEG,
                 "-f", "best[height<=480]/best",
                 "--merge-output-format", "mp4",
-                "-o", str(video_path),
-                "--no-playlist",
-                "--", req.video_id,
+                "-o", str(video_path), "--no-playlist", "--", req.video_id,
             ],
-            # 3. tv_simply: 最終フォールバック
+            # 3. tv_simply＋cookies
             _yt_base_args("tv_simply") + [
                 "--ffmpeg-location", FFMPEG,
                 "-f", "best",
-                "-o", str(video_path),
-                "--no-playlist",
-                "--", req.video_id,
+                "-o", str(video_path), "--no-playlist", "--", req.video_id,
             ],
         ]
 

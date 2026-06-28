@@ -73,8 +73,7 @@ def _classify_ytdlp_error(stderr: str) -> str:
     if "sign in" in s or "bot" in s or "confirm you" in s:
         return (
             "YouTubeのbot検出によりブロックされました。\n"
-            "Render環境変数に YOUTUBE_COOKIES_B64 を設定してください。\n"
-            "（ブラウザからエクスポートしたYouTubeクッキーをBase64エンコードしたもの）"
+            "別の動画で試すか、しばらく時間をおいてから再試行してください。"
         )
     if "video unavailable" in s or "private video" in s:
         return "動画が非公開または削除されています"
@@ -319,12 +318,9 @@ async def create_clip(req: ClipRequest):
                 "--no-playlist",
                 "--", req.video_id,
             ],
-            # 3. クライアント指定なし（デフォルトweb）
-            [
-                YT_DLP,
+            # 3. tv_simply: クッキーありで再試行
+            _yt_base_args("tv_simply") + [
                 "--ffmpeg-location", FFMPEG,
-                "--no-warnings",
-                "--no-check-certificates",
                 "-f", "best",
                 "-o", str(video_path),
                 "--no-playlist",

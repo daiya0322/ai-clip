@@ -2,7 +2,7 @@
 import { useState } from 'react';
 
 const API = '';
-// clipはVercel経由だと10秒タイムアウトで失敗するためRailwayに直接送る
+// clipはVercel経由だとタイムアウトするためバックエンドに直接送る
 const CLIP_API = process.env.NEXT_PUBLIC_BACKEND_URL ?? '';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -171,6 +171,12 @@ export default function Home() {
 
   async function handleClip() {
     if (!meta) return;
+
+    if (!CLIP_API) {
+      setError('バックエンドURLが設定されていません。Vercel環境変数 NEXT_PUBLIC_BACKEND_URL にRenderのURLを設定してください。');
+      return;
+    }
+
     const isManualMode = step === 'manual' || useManual;
     const startSec = isManualMode
       ? parseTimeStr(manualStart)
@@ -200,14 +206,15 @@ export default function Home() {
         }),
       });
       if (!res.ok) {
-        const e = await res.json();
+        const e = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
         throw new Error(e.detail ?? '動画生成に失敗しました');
       }
       const blob = await res.blob();
       const burl = URL.createObjectURL(blob);
       setClipUrl(burl);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
     } finally {
       setClipping(false);
     }

@@ -84,7 +84,7 @@ def _classify_ytdlp_error(stderr: str) -> str:
         return "YouTubeのレート制限に引っかかりました。しばらく待ってから再試行してください"
     if "network" in s or "connection" in s or "timeout" in s:
         return "ネットワークエラーが発生しました。再試行してください"
-    return f"動画のダウンロードに失敗しました"
+    return f"動画のダウンロードに失敗しました: {stderr[-300:]}"
 
 
 def extract_video_id(url: str) -> str | None:

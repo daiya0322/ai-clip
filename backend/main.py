@@ -159,7 +159,7 @@ async def get_transcript(req: TranscriptRequest):
 
     # Get metadata via yt-dlp（複数クライアントでフォールバック）
     title, duration, uploader = "", 0, ""
-    for client in ["tv_simply", "ios", "mweb"]:
+    for client in ["web", "ios", "tv_simply"]:
         meta = subprocess.run(
             _yt_base_args(client) + [
                 "--skip-download", "--print", "%(title)s|||%(duration)s|||%(channel)s",
@@ -300,8 +300,8 @@ async def create_clip(req: ClipRequest):
     try:
         # ── ダウンロード（複数クライアントでフォールバック）────────────────
         download_strategies = [
-            # 1. androidクライアント: クッキーありで最も安定
-            _yt_base_args("android") + [
+            # 1. webクライアント: ブラウザcookiesと一致するため最優先
+            _yt_base_args("web") + [
                 "--ffmpeg-location", FFMPEG,
                 "-f", "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
                 "--merge-output-format", "mp4",
@@ -318,7 +318,7 @@ async def create_clip(req: ClipRequest):
                 "--no-playlist",
                 "--", req.video_id,
             ],
-            # 3. tv_simply: クッキーありで再試行
+            # 3. tv_simply: 最終フォールバック
             _yt_base_args("tv_simply") + [
                 "--ffmpeg-location", FFMPEG,
                 "-f", "best",

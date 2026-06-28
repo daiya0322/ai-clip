@@ -1,8 +1,10 @@
 services:
   - type: web
     name: ai-clip-backend
-    runtime: docker
-    dockerfilePath: ./Dockerfile
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false

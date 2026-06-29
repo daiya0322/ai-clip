@@ -302,31 +302,25 @@ async def create_clip(req: ClipRequest):
 
     try:
         # ── ダウンロード（複数クライアントでフォールバック）────────────────
-        # クッキーファイルを取得
+        # クッキーファイルを明示的に取得・確認
         cf = _get_cookies_file()
-        cookie_args = ["--cookies", str(cf)] if cf else []
+        cookie_args = ["--cookies", str(cf)] if cf and cf.exists() else []
+
+        base = [YT_DLP, "--no-warnings", "--no-check-certificates",
+                "--ffmpeg-location", FFMPEG] + cookie_args
 
         download_strategies = [
-            # 1. クライアント指定なし＋cookies（最もブラウザに近い）
-            [YT_DLP, "--no-warnings", "--no-check-certificates",
-             "--ffmpeg-location", FFMPEG] + cookie_args + [
-                "-f", "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
-                "--merge-output-format", "mp4",
-                "-o", str(video_path), "--no-playlist", "--", req.video_id,
-            ],
-            # 2. ios＋cookies
-            _yt_base_args("ios") + [
-                "--ffmpeg-location", FFMPEG,
-                "-f", "best[height<=480]/best",
-                "--merge-output-format", "mp4",
-                "-o", str(video_path), "--no-playlist", "--", req.video_id,
-            ],
-            # 3. tv_simply＋cookies
-            _yt_base_args("tv_simply") + [
-                "--ffmpeg-location", FFMPEG,
-                "-f", "best",
-                "-o", str(video_path), "--no-playlist", "--", req.video_id,
-            ],
+            # 1. android + cookies + 最も互換性の高いフォーマット
+            base + ["--extractor-args", "youtube:player_client=android",
+                    "-f", "best[height<=720]/best",
+                    "-o", str(video_path), "--no-playlist", "--", req.video_id],
+            # 2. ios + cookies
+            base + ["--extractor-args", "youtube:player_client=ios",
+                    "-f", "best[height<=480]/best",
+                    "-o", str(video_path), "--no-playlist", "--", req.video_id],
+            # 3. クライアント指定なし + cookies
+            base + ["-f", "best",
+                    "-o", str(video_path), "--no-playlist", "--", req.video_id],
         ]
 
         dl_result = None

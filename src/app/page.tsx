@@ -1,9 +1,10 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const API = '';
 // clipはVercel経由だとタイムアウトするためバックエンドに直接送る
-const CLIP_API = process.env.NEXT_PUBLIC_BACKEND_URL ?? '';
+// NEXT_PUBLIC_BACKEND_URL 未設定時はローカルデフォルトにフォールバック
+const CLIP_API = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -101,22 +102,38 @@ function ModeToggle({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void 
 // ── Main Component ─────────────────────────────────────────────────────────
 
 type Step = 'input' | 'loading_meta' | 'instruct' | 'analyzing' | 'results' | 'manual';
+type BackendStatus = 'checking' | 'ok' | 'no_key' | 'error';
 
 export default function Home() {
-  const [step,       setStep]       = useState<Step>('input');
-  const [url,        setUrl]        = useState('');
-  const [meta,       setMeta]       = useState<VideoMeta | null>(null);
-  const [instruction,setInstruction]= useState('');
-  const [format,     setFormat]     = useState<Format>('9:16');
-  const [mode,       setMode]       = useState<Mode>('letterbox');
-  const [clips,      setClips]      = useState<ClipCandidate[]>([]);
-  const [selected,   setSelected]   = useState<ClipCandidate | null>(null);
-  const [manualStart,setManualStart]= useState('');
-  const [manualEnd,  setManualEnd]  = useState('');
-  const [useManual,  setUseManual]  = useState(false);
-  const [clipUrl,    setClipUrl]    = useState('');
-  const [error,      setError]      = useState('');
-  const [clipping,   setClipping]   = useState(false);
+  const [step,          setStep]          = useState<Step>('input');
+  const [url,           setUrl]           = useState('');
+  const [meta,          setMeta]          = useState<VideoMeta | null>(null);
+  const [instruction,   setInstruction]   = useState('');
+  const [format,        setFormat]        = useState<Format>('9:16');
+  const [mode,          setMode]          = useState<Mode>('letterbox');
+  const [clips,         setClips]         = useState<ClipCandidate[]>([]);
+  const [selected,      setSelected]      = useState<ClipCandidate | null>(null);
+  const [manualStart,   setManualStart]   = useState('');
+  const [manualEnd,     setManualEnd]     = useState('');
+  const [useManual,     setUseManual]     = useState(false);
+  const [clipUrl,       setClipUrl]       = useState('');
+  const [error,         setError]         = useState('');
+  const [clipping,      setClipping]      = useState(false);
+  const [backendStatus, setBackendStatus] = useState<BackendStatus>('checking');
+
+  async function checkBackend() {
+    setBackendStatus('checking');
+    try {
+      const res = await fetch('/api/health', { signal: AbortSignal.timeout(60000) });
+      if (!res.ok) { setBackendStatus('error'); return; }
+      const data = await res.json();
+      setBackendStatus(data.has_anthropic_key === false ? 'no_key' : 'ok');
+    } catch {
+      setBackendStatus('error');
+    }
+  }
+
+  useEffect(() => { checkBackend(); }, []);
 
   async function handleLoadMeta() {
     if (!url.trim()) return;
@@ -172,8 +189,12 @@ export default function Home() {
   async function handleClip() {
     if (!meta) return;
 
-    if (!CLIP_API) {
-      setError('バックエンドURLが設定されていません。Vercel環境変数 NEXT_PUBLIC_BACKEND_URL にRenderのURLを設定してください。');
+    if (backendStatus === 'error') {
+      setError('バックエンドに接続できません。ターミナルで bash start.sh を実行してください。');
+      return;
+    }
+    if (backendStatus === 'no_key') {
+      setError('ANTHROPIC_API_KEY が設定されていません。backend/.env に本物のAPIキーを記入してください。');
       return;
     }
 
@@ -262,6 +283,59 @@ export default function Home() {
             URLを貼って指示するだけ。AIがバズる切り抜き候補を提案します。
           </p>
         </header>
+
+        {/* Backend status banner */}
+        {backendStatus === 'error' && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '10px',
+            padding: '12px 16px', borderRadius: '10px', marginBottom: '20px',
+            background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.22)',
+          }}>
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EF4444', flexShrink: 0 }} />
+            <p style={{ fontSize: '13px', color: 'rgba(252,165,165,0.9)', flex: 1, lineHeight: 1.5 }}>
+              バックエンドが起動していません。ターミナルで <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>bash start.sh</code> を実行してください。
+            </p>
+            <button
+              onClick={checkBackend}
+              style={{ fontSize: '12px', padding: '5px 12px', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.35)', background: 'transparent', color: 'rgba(252,165,165,0.8)', cursor: 'pointer', flexShrink: 0, fontFamily: 'inherit' }}
+            >
+              再確認
+            </button>
+          </div>
+        )}
+        {backendStatus === 'no_key' && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '10px',
+            padding: '12px 16px', borderRadius: '10px', marginBottom: '20px',
+            background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.22)',
+          }}>
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#F59E0B', flexShrink: 0 }} />
+            <p style={{ fontSize: '13px', color: 'rgba(253,211,77,0.9)', flex: 1, lineHeight: 1.5 }}>
+              ANTHROPIC_API_KEY が未設定です。<code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>backend/.env</code> に本物のAPIキーを設定してください。
+            </p>
+          </div>
+        )}
+        {backendStatus === 'ok' && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            padding: '8px 14px', borderRadius: '8px', marginBottom: '16px',
+            background: 'rgba(52,211,153,0.06)', border: '1px solid rgba(52,211,153,0.18)',
+          }}>
+            <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#34D399' }} />
+            <span style={{ fontSize: '12px', color: 'rgba(52,211,153,0.85)' }}>バックエンド稼働中</span>
+          </div>
+        )}
+        {backendStatus === 'checking' && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            padding: '8px 14px', borderRadius: '8px', marginBottom: '16px',
+            background: 'rgba(100,116,139,0.06)', border: '1px solid rgba(100,116,139,0.15)',
+          }}>
+            <div className="spinner" style={{ width: '8px', height: '8px' }} />
+            <span style={{ fontSize: '12px', color: 'rgba(148,163,184,0.7)' }}>バックエンド起動中（初回は30秒ほどかかります）</span>
+            <span style={{ fontSize: '12px', color: 'var(--t4)' }}>バックエンド接続確認中...</span>
+          </div>
+        )}
 
         {/* Step indicator */}
         {step !== 'input' && (

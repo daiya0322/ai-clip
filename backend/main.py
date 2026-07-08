@@ -52,13 +52,17 @@ def _get_cookies_file() -> Path | None:
     global _COOKIES_FILE
     if _COOKIES_FILE and _COOKIES_FILE.exists():
         return _COOKIES_FILE
-    b64 = os.environ.get("YOUTUBE_COOKIES_B64", "")
+    b64 = os.environ.get("YOUTUBE_COOKIES_B64", "").strip()
     if not b64:
         return None
     import base64
-    _COOKIES_FILE = TMP_DIR / "yt_cookies.txt"
-    _COOKIES_FILE.write_bytes(base64.b64decode(b64))
-    return _COOKIES_FILE
+    b64 += "=" * (-len(b64) % 4)
+    try:
+        _COOKIES_FILE = TMP_DIR / "yt_cookies.txt"
+        _COOKIES_FILE.write_bytes(base64.b64decode(b64))
+        return _COOKIES_FILE
+    except Exception:
+        return None
 
 
 def _yt_base_args(player_client: str = "tv_simply") -> list[str]:

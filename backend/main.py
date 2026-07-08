@@ -8,7 +8,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
@@ -470,3 +470,61 @@ async def create_clip(req: ClipRequest):
                 f.unlink()
             except Exception:
                 pass
+
+
+@app.post("/api/clip-upload")
+async def clip_from_upload(
+    video: UploadFile = File(...),
+    start: float = Form(...),
+    end: float = Form(...),
+    format: str = Form("9:16"),
+    mode: str = Form("letterbox"),
+):
+    job_id = str(uuid.uuid4())[:8]
+    src_path = TMP_DIR / f"upload_{job_id}{Path(video.filename or 'video.mp4').suffix}"
+    output_path = TMP_DIR / f"clip_{job_id}.mp4"
+
+    try:
+        src_path.write_bytes(await video.read())
+
+        duration = end - start
+        if duration <= 0:
+            raise HTTPException(400, "終了時間は開始時間より後にしてください")
+
+        use_crop = mode == "crop"
+        if format == "9:16":
+            vf = "crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920:flags=lanczos" if use_crop else (
+                "scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos,"
+                "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,setsar=1"
+            )
+        elif format == "1:1":
+            vf = "crop=min(iw\\,ih):min(iw\\,ih),scale=1080:1080:flags=lanczos" if use_crop else (
+                "scale=1080:1080:force_original_aspect_ratio=decrease:flags=lanczos,"
+                "pad=1080:1080:(ow-iw)/2:(oh-ih)/2:black,setsar=1"
+            )
+        else:
+            vf = "scale=1280:720:force_original_aspect_ratio=decrease:flags=lanczos,pad=1280:720:(ow-iw)/2:(oh-ih)/2:black,setsar=1"
+
+        ff = subprocess.run([
+            FFMPEG, "-y",
+            "-ss", str(start),
+            "-i", str(src_path),
+            "-t", str(duration),
+            "-vf", vf,
+            "-c:v", "libx264", "-crf", "22",
+            "-c:a", "aac", "-b:a", "128k",
+            "-preset", "fast",
+            "-movflags", "+faststart",
+            str(output_path),
+        ], capture_output=True, text=True, timeout=300)
+
+        if ff.returncode != 0:
+            raise HTTPException(500, f"動画の生成に失敗しました: {ff.stderr[-400:]}")
+
+        return FileResponse(str(output_path), media_type="video/mp4", filename=f"clip_{job_id}.mp4")
+
+    finally:
+        try:
+            src_path.unlink()
+        except Exception:
+            pass

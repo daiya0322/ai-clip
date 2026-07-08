@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 const API = '';
 // clipはVercel経由だとタイムアウトするためバックエンドに直接送る
@@ -120,6 +120,8 @@ export default function Home() {
   const [error,         setError]         = useState('');
   const [clipping,      setClipping]      = useState(false);
   const [backendStatus, setBackendStatus] = useState<BackendStatus>('checking');
+  const [uploadFile,    setUploadFile]    = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function checkBackend(retries = 6) {
     setBackendStatus('checking');
@@ -199,6 +201,37 @@ export default function Home() {
     }
   }
 
+  async function handleClipUpload() {
+    if (!meta || !uploadFile) return;
+    const isManualMode = step === 'manual' || useManual;
+    const startSec = isManualMode ? parseTimeStr(manualStart) : (selected?.start_seconds ?? 0);
+    const endSec   = isManualMode ? parseTimeStr(manualEnd)   : (selected?.end_seconds ?? 0);
+    if (endSec <= startSec) { setError('終了時間は開始時間より後にしてください'); return; }
+
+    setError('');
+    setClipping(true);
+    setClipUrl('');
+    try {
+      const form = new FormData();
+      form.append('video', uploadFile);
+      form.append('start', String(startSec));
+      form.append('end',   String(endSec));
+      form.append('format', format);
+      form.append('mode',   mode);
+      const res = await fetch(`${CLIP_API}/api/clip-upload`, { method: 'POST', body: form });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+        throw new Error(e.detail ?? '動画生成に失敗しました');
+      }
+      const blob = await res.blob();
+      setClipUrl(URL.createObjectURL(blob));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setClipping(false);
+    }
+  }
+
   async function handleClip() {
     if (!meta) return;
 
@@ -267,6 +300,7 @@ export default function Home() {
     setClipUrl('');
     setError('');
     setMode('letterbox');
+    setUploadFile(null);
   }
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -620,8 +654,31 @@ export default function Home() {
               disabled={clipping || !manualStart || !manualEnd || parseTimeStr(manualEnd) <= parseTimeStr(manualStart)}
               style={{ width:'100%', padding:'15px', justifyContent:'center', fontSize:'15px' }}
             >
-              {clipping ? <><div className="spinner" />動画を生成中...</> : '切り抜きを生成'}
+              {clipping ? <><div className="spinner" />動画を生成中...</> : '切り抜きを生成（YouTube URL）'}
             </button>
+
+            {/* Upload alternative */}
+            <div className="card" style={{ padding:'20px 24px', marginTop:'12px', background:'rgba(245,158,11,0.05)', border:'1px solid rgba(245,158,11,0.20)' }}>
+              <p style={{ fontSize:'13px', color:'rgba(253,211,77,0.85)', marginBottom:'12px', lineHeight:1.5 }}>
+                ⚠️ サーバーIPがYouTubeにブロックされる場合は、動画を手動でダウンロードしてアップロードしてください
+              </p>
+              <input ref={fileInputRef} type="file" accept="video/*" style={{ display:'none' }}
+                onChange={e => setUploadFile(e.target.files?.[0] ?? null)} />
+              <div style={{ display:'flex', gap:'10px', alignItems:'center', flexWrap:'wrap' }}>
+                <button className="btn-ghost" onClick={() => fileInputRef.current?.click()}
+                  style={{ fontSize:'13px', padding:'8px 16px' }}>
+                  {uploadFile ? `📁 ${uploadFile.name}` : '動画ファイルを選択'}
+                </button>
+                {uploadFile && (
+                  <button className="btn-primary"
+                    onClick={handleClipUpload}
+                    disabled={clipping || !manualStart || !manualEnd || parseTimeStr(manualEnd) <= parseTimeStr(manualStart)}
+                    style={{ fontSize:'13px', padding:'8px 16px' }}>
+                    {clipping ? <><div className="spinner" />生成中...</> : 'アップロードして切り抜き'}
+                  </button>
+                )}
+              </div>
+            </div>
 
             {clipUrl && (
               <div className="afi card-accent" style={{ padding:'24px', marginTop:'20px', textAlign:'center' }}>
@@ -771,8 +828,31 @@ export default function Home() {
               disabled={clipping || (!selected && !useManual) || (useManual && (!manualStart || !manualEnd))}
               style={{ width:'100%', padding:'15px', justifyContent:'center', fontSize:'15px' }}
             >
-              {clipping ? <><div className="spinner" />動画を生成中... (数分かかる場合があります)</> : '切り抜きを生成'}
+              {clipping ? <><div className="spinner" />動画を生成中...</> : '切り抜きを生成（YouTube URL）'}
             </button>
+
+            {/* Upload alternative */}
+            <div className="card" style={{ padding:'20px 24px', marginTop:'12px', background:'rgba(245,158,11,0.05)', border:'1px solid rgba(245,158,11,0.20)' }}>
+              <p style={{ fontSize:'13px', color:'rgba(253,211,77,0.85)', marginBottom:'12px', lineHeight:1.5 }}>
+                ⚠️ サーバーIPがYouTubeにブロックされる場合は、動画を手動でダウンロードしてアップロードしてください
+              </p>
+              <input ref={fileInputRef} type="file" accept="video/*" style={{ display:'none' }}
+                onChange={e => setUploadFile(e.target.files?.[0] ?? null)} />
+              <div style={{ display:'flex', gap:'10px', alignItems:'center', flexWrap:'wrap' }}>
+                <button className="btn-ghost" onClick={() => fileInputRef.current?.click()}
+                  style={{ fontSize:'13px', padding:'8px 16px' }}>
+                  {uploadFile ? `📁 ${uploadFile.name}` : '動画ファイルを選択'}
+                </button>
+                {uploadFile && (
+                  <button className="btn-primary"
+                    onClick={handleClipUpload}
+                    disabled={clipping || (!selected && !useManual) || (useManual && (!manualStart || !manualEnd))}
+                    style={{ fontSize:'13px', padding:'8px 16px' }}>
+                    {clipping ? <><div className="spinner" />生成中...</> : 'アップロードして切り抜き'}
+                  </button>
+                )}
+              </div>
+            </div>
 
             {/* Download */}
             {clipUrl && (

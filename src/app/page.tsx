@@ -121,16 +121,28 @@ export default function Home() {
   const [clipping,      setClipping]      = useState(false);
   const [backendStatus, setBackendStatus] = useState<BackendStatus>('checking');
 
-  async function checkBackend() {
+  async function checkBackend(retries = 6) {
     setBackendStatus('checking');
-    try {
-      const res = await fetch('/api/health', { signal: AbortSignal.timeout(60000) });
-      if (!res.ok) { setBackendStatus('error'); return; }
-      const data = await res.json();
-      setBackendStatus(data.has_anthropic_key === false ? 'no_key' : 'ok');
-    } catch {
-      setBackendStatus('error');
+    for (let i = 0; i < retries; i++) {
+      try {
+        const res = await fetch('/api/health', { signal: AbortSignal.timeout(60000) });
+        const data = await res.json();
+        if (data.status === 'warming_up') {
+          await new Promise(r => setTimeout(r, 10000));
+          continue;
+        }
+        if (!res.ok) { setBackendStatus('error'); return; }
+        setBackendStatus(data.has_anthropic_key === false ? 'no_key' : 'ok');
+        return;
+      } catch {
+        if (i < retries - 1) {
+          await new Promise(r => setTimeout(r, 8000));
+          continue;
+        }
+        setBackendStatus('error');
+      }
     }
+    setBackendStatus('error');
   }
 
   useEffect(() => { checkBackend(); }, []);

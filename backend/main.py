@@ -140,15 +140,21 @@ class ClipRequest(BaseModel):
 
 @app.get("/api/health")
 def health():
-    cf = _get_cookies_file()
-    cookie_size = cf.stat().st_size if cf and cf.exists() else 0
+    try:
+        cf = _get_cookies_file()
+        cookie_size = cf.stat().st_size if cf and cf.exists() else 0
+    except Exception:
+        cf = None
+        cookie_size = 0
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     return {
         "status": "ok",
-        "ffmpeg": FFMPEG,
-        "yt_dlp": YT_DLP,
+        "ffmpeg": str(FFMPEG) if FFMPEG else None,
+        "yt_dlp": str(YT_DLP) if YT_DLP else None,
         "has_youtube_cookies": bool(os.environ.get("YOUTUBE_COOKIES_B64")),
         "cookies_file": str(cf) if cf else None,
         "cookies_file_size": cookie_size,
+        "has_anthropic_key": bool(api_key) and api_key != "your_api_key_here",
     }
 
 
@@ -186,21 +192,43 @@ async def get_transcript(req: TranscriptRequest):
         if uploader in ("NA", "N/A", "") and uploader_fb:
             uploader = uploader_fb
 
-    # Get transcript
+    # Get transcript（youtube-transcript-api 0.x / 1.x 両対応）
     transcript_text = ""
     try:
         transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        try:
-            t = transcript_list.find_transcript(['ja'])
-        except Exception:
+        t = None
+        # 手動字幕 (ja → en の順)
+        for lang in ['ja', 'en']:
             try:
-                t = transcript_list.find_transcript(['en'])
+                t = transcript_list.find_transcript([lang])
+                break
             except Exception:
+                continue
+        # 自動生成字幕（メソッド名が 1.x で変わったため両方試す）
+        if t is None:
+            try:
                 t = transcript_list.find_generated_transcript(['ja', 'en', 'ja-JP'])
+            except AttributeError:
+                try:
+                    t = transcript_list.find_automatically_generated_transcript(['ja', 'en'])
+                except Exception:
+                    pass
+            except Exception:
+                pass
 
-        entries = t.fetch()
-        lines = [f"[{seconds_to_ts(e['start'])}] {e['text']}" for e in entries]
-        transcript_text = '\n'.join(lines)
+        if t is not None:
+            entries = t.fetch()
+            lines = []
+            for e in entries:
+                # 0.x: dict形式、1.x: オブジェクト形式（どちらも対応）
+                try:
+                    start = e['start']
+                    text  = e['text']
+                except (TypeError, KeyError):
+                    start = getattr(e, 'start', 0)
+                    text  = getattr(e, 'text', '')
+                lines.append(f"[{seconds_to_ts(float(start))}] {text}")
+            transcript_text = '\n'.join(lines)
     except (NoTranscriptFound, TranscriptsDisabled):
         transcript_text = ""
     except Exception:
@@ -218,6 +246,13 @@ async def get_transcript(req: TranscriptRequest):
 
 @app.post("/api/analyze")
 async def analyze(req: AnalyzeRequest):
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key or api_key == "your_api_key_here":
+        raise HTTPException(
+            500,
+            "ANTHROPIC_API_KEY が設定されていません。backend/.env の ANTHROPIC_API_KEY に本物のAPIキーを設定してください。"
+        )
+
     format_label = {
         "9:16":  "縦型（TikTok / YouTube Shorts / Instagram Reels）",
         "16:9":  "横型（YouTube通常動画）",

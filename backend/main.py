@@ -8,9 +8,9 @@ import subprocess
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 import shutil
 import anthropic
@@ -25,6 +25,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"サーバーエラー: {type(exc).__name__}: {str(exc)}", "traceback": traceback.format_exc()[-1000:]},
+    )
 
 BASE_DIR = Path(__file__).parent
 TMP_DIR  = Path(os.environ.get("TMP_DIR", str(BASE_DIR / "tmp")))
@@ -160,7 +168,16 @@ def health():
 
 @app.post("/api/transcript")
 async def get_transcript(req: TranscriptRequest):
-    from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
+    from youtube_transcript_api import YouTubeTranscriptApi
+    try:
+        from youtube_transcript_api import NoTranscriptFound, TranscriptsDisabled
+    except ImportError:
+        try:
+            from youtube_transcript_api._errors import CouldNotRetrieveTranscript as NoTranscriptFound
+            TranscriptsDisabled = NoTranscriptFound
+        except ImportError:
+            NoTranscriptFound = Exception
+            TranscriptsDisabled = Exception
 
     video_id = extract_video_id(req.url)
     if not video_id:

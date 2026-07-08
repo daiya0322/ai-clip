@@ -308,7 +308,7 @@ export default function Home() {
               バックエンドが起動していません。ターミナルで <code style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px' }}>bash start.sh</code> を実行してください。
             </p>
             <button
-              onClick={checkBackend}
+              onClick={() => checkBackend()}
               style={{ fontSize: '12px', padding: '5px 12px', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.35)', background: 'transparent', color: 'rgba(252,165,165,0.8)', cursor: 'pointer', flexShrink: 0, fontFamily: 'inherit' }}
             >
               再確認

@@ -364,23 +364,19 @@ async def create_clip(req: ClipRequest):
         base = [YT_DLP, "--no-warnings", "--no-check-certificates",
                 "--ffmpeg-location", FFMPEG] + cookie_args
 
+        fmt_opts = [
+            "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]/bestvideo+bestaudio/best",
+            "--merge-output-format", "mp4",
+        ]
         common = ["-o", str(video_path), "--no-playlist", "--", req.video_id]
 
         download_strategies = [
-            # 1. tv_simply: サーバー環境でbot検出を回避しやすい
-            base + ["--extractor-args", "youtube:player_client=tv_simply",
-                    "-f", "best[height<=720]/best"] + common,
-            # 2. web
-            base + ["--extractor-args", "youtube:player_client=web",
-                    "-f", "best[height<=720]/best"] + common,
-            # 3. ios
-            base + ["--extractor-args", "youtube:player_client=ios",
-                    "-f", "best[height<=480]/best"] + common,
-            # 4. android
-            base + ["--extractor-args", "youtube:player_client=android",
-                    "-f", "best[height<=720]/best"] + common,
-            # 5. クライアント指定なし
-            base + ["-f", "best"] + common,
+            base + ["--extractor-args", "youtube:player_client=tv_simply"] + fmt_opts + common,
+            base + ["--extractor-args", "youtube:player_client=web"] + fmt_opts + common,
+            base + ["--extractor-args", "youtube:player_client=ios"] + fmt_opts + common,
+            base + ["--extractor-args", "youtube:player_client=android"] + fmt_opts + common,
+            base + fmt_opts + common,
+            base + ["-f", "best", "--merge-output-format", "mp4"] + common,
         ]
 
         dl_result = None

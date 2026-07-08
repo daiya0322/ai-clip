@@ -152,10 +152,11 @@ export default function Home() {
     setError('');
     setStep('loading_meta');
     try {
-      const res = await fetch(`${CLIP_API}/api/transcript`, {
+      const res = await fetch(`${API}/api/transcript`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: url.trim() }),
+        signal: AbortSignal.timeout(280000),
       });
       if (!res.ok) {
         const e = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
@@ -175,7 +176,7 @@ export default function Home() {
     setError('');
     setStep('analyzing');
     try {
-      const res = await fetch(`${CLIP_API}/api/analyze`, {
+      const res = await fetch(`${API}/api/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

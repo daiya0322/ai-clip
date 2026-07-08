@@ -150,6 +150,24 @@ class ClipRequest(BaseModel):
 
 # ─── Endpoints ─────────────────────────────────────────────────────────────
 
+@app.get("/api/formats/{video_id}")
+def list_formats(video_id: str):
+    cf = _get_cookies_file()
+    cookie_args = ["--cookies", str(cf)] if cf and cf.exists() else []
+    results = {}
+    for client in ["tv_simply", "web", "ios", "android"]:
+        r = subprocess.run(
+            [YT_DLP] + cookie_args + [
+                "--extractor-args", f"youtube:player_client={client}",
+                "--list-formats", "--no-warnings", "--no-check-certificates",
+                "--", video_id,
+            ],
+            capture_output=True, text=True, timeout=30
+        )
+        results[client] = {"ok": r.returncode == 0, "out": r.stdout[-500:], "err": r.stderr[-300:]}
+    return results
+
+
 @app.get("/api/health")
 def health():
     try:

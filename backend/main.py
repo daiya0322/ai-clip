@@ -358,25 +358,29 @@ async def create_clip(req: ClipRequest):
 
     try:
         # ── ダウンロード（複数クライアントでフォールバック）────────────────
-        # クッキーファイルを明示的に取得・確認
         cf = _get_cookies_file()
         cookie_args = ["--cookies", str(cf)] if cf and cf.exists() else []
 
         base = [YT_DLP, "--no-warnings", "--no-check-certificates",
                 "--ffmpeg-location", FFMPEG] + cookie_args
 
+        common = ["-o", str(video_path), "--no-playlist", "--", req.video_id]
+
         download_strategies = [
-            # 1. android + cookies + 最も互換性の高いフォーマット
-            base + ["--extractor-args", "youtube:player_client=android",
-                    "-f", "best[height<=720]/best",
-                    "-o", str(video_path), "--no-playlist", "--", req.video_id],
-            # 2. ios + cookies
+            # 1. tv_simply: サーバー環境でbot検出を回避しやすい
+            base + ["--extractor-args", "youtube:player_client=tv_simply",
+                    "-f", "best[height<=720]/best"] + common,
+            # 2. web
+            base + ["--extractor-args", "youtube:player_client=web",
+                    "-f", "best[height<=720]/best"] + common,
+            # 3. ios
             base + ["--extractor-args", "youtube:player_client=ios",
-                    "-f", "best[height<=480]/best",
-                    "-o", str(video_path), "--no-playlist", "--", req.video_id],
-            # 3. クライアント指定なし + cookies
-            base + ["-f", "best",
-                    "-o", str(video_path), "--no-playlist", "--", req.video_id],
+                    "-f", "best[height<=480]/best"] + common,
+            # 4. android
+            base + ["--extractor-args", "youtube:player_client=android",
+                    "-f", "best[height<=720]/best"] + common,
+            # 5. クライアント指定なし
+            base + ["-f", "best"] + common,
         ]
 
         dl_result = None
